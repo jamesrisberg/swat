@@ -12,6 +12,10 @@ npx --yes serve public
 
 Then open the URL it prints (e.g. `http://localhost:3000`).
 
+## Phase A prototype (single-player)
+
+Clunky momentum flight, a giant NPC with slow arm swings (hand collision = knockback), bite score near the torso, and placeholder hazards (citronella repulsion, wind, bug-zapper pull). Code lives under `public/js/` (`main.js`, `flight.js`, `giant.js`, `hazards.js`).
+
 ## Architecture (deployment)
 
 | Layer | Role |
@@ -28,7 +32,8 @@ See the project plan in your tracker for netcode details (quantization, delta en
 
 ```
 public/       # nginx docroot: index.html, assets
-client/       # Game client modules (Three.js scene, flight, entities)
+public/js/    # Phase A game modules (no bundler yet)
+client/       # Future source modules when you add a bundler
 server/       # Reserved for future WebSocket / sim process
 ```
 
