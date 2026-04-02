@@ -1,0 +1,23 @@
+# Dependencies
+node_modules/
+vendor/
+
+# Build / cache
+dist/
+.cache/
+*.log
+
+# Environment
+.env
+.env.*
+
+# OS / editor
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+.idea/
+.vscode/
+
+# Optional tooling
+coverage/

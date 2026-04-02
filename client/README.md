@@ -1,0 +1,1 @@
+Game client modules (mosquito, giant NPC, hazards, netcode) will live here. The static entry served by nginx is [`public/js/main.js`](../public/js/main.js); add a bundler (Vite, esbuild) later if you want to compile from `client/` into `public/`.
