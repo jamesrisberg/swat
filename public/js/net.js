@@ -92,4 +92,12 @@ export class NetClient {
       })
     );
   }
+
+  /** Call after connect so the server places you in a lobby (see `?room=`). */
+  sendJoin(room) {
+    if (!this.ws || this.ws.readyState !== WebSocket.OPEN) return;
+    const r =
+      typeof room === "string" && room.length > 0 ? room : "default";
+    this.ws.send(JSON.stringify({ type: "join", room: r }));
+  }
 }

@@ -3,6 +3,7 @@ import { Mosquito, createKeyboardInput } from "./flight.js";
 import { Giant } from "./giant.js";
 import { HazardZones } from "./hazards.js";
 import { NetClient } from "./net.js";
+import { Predators } from "./predators.js";
 import { RemotePeers } from "./peers.js";
 
 const scene = new THREE.Scene();
@@ -38,15 +39,18 @@ scene.add(mosquito.group);
 
 const giant = new Giant(scene);
 const hazards = new HazardZones(scene);
+const predators = new Predators(scene);
 const readInput = createKeyboardInput();
 
 const biteEl = document.getElementById("bites");
 const swatEl = document.getElementById("swats");
+const predEl = document.getElementById("preds");
 const netStatusEl = document.getElementById("net-status");
 
 const params = new URLSearchParams(location.search);
 const wsUrl =
   params.get("ws") ?? `ws://${location.hostname}:8080`;
+const roomParam = params.get("room") ?? "default";
 
 /** @type {NetClient | null} */
 let net = null;
@@ -60,9 +64,17 @@ let sendAcc = 0;
     await client.connect(wsUrl);
     net = client;
     peers = new RemotePeers(scene, net.id);
+    net.sendJoin(roomParam);
     net.onMessage = (msg) => {
       if (msg.type === "snapshot" && peers && msg.players) {
         peers.ingestSnapshot(msg);
+      }
+      if (msg.type === "room" && peers) {
+        peers.clear();
+        if (netStatusEl) {
+          const r = typeof msg.room === "string" ? msg.room : roomParam;
+          netStatusEl.textContent = `Online · ${wsUrl} · room ${r}`;
+        }
       }
       if (msg.type === "disconnected" && peers) {
         peers.dispose();
@@ -71,7 +83,9 @@ let sendAcc = 0;
         if (netStatusEl) netStatusEl.textContent = "Solo (offline)";
       }
     };
-    if (netStatusEl) netStatusEl.textContent = `Online · ${wsUrl}`;
+    if (netStatusEl) {
+      netStatusEl.textContent = `Online · ${wsUrl} · room ${roomParam}`;
+    }
   } catch (e) {
     console.warn("Multiplayer offline:", e);
     if (netStatusEl) netStatusEl.textContent = "Solo (offline)";
@@ -80,8 +94,10 @@ let sendAcc = 0;
 
 let bites = 0;
 let swats = 0;
+let predHits = 0;
 let biteCooldown = 0;
 let hitCooldown = 0;
+let predatorCooldown = 0;
 const knock = new THREE.Vector3();
 const camOff = new THREE.Vector3(0, 0.45, 2.6);
 const lookAt = new THREE.Vector3();
@@ -93,10 +109,11 @@ function tick(now) {
   requestAnimationFrame(tick);
   const dt = Math.min(0.05, (now - last) / 1000);
   last = now;
+  const timeSec = now * 0.001;
 
   mosquito.update(readInput(), dt);
   hazards.apply(mosquito, dt);
-  giant.update(dt, now * 0.001, mosquito.position);
+  giant.update(dt, timeSec, mosquito.position);
 
   sendAcc += dt;
   if (net && sendAcc >= 0.05) {
@@ -125,6 +142,21 @@ function tick(now) {
     if (swatEl) swatEl.textContent = String(swats);
     document.body.classList.add("flash");
     setTimeout(() => document.body.classList.remove("flash"), 120);
+  }
+
+  predatorCooldown -= dt;
+  if (predatorCooldown <= 0 && predators.update(timeSec, mosquito)) {
+    knock.set(
+      (Math.random() - 0.5) * 16,
+      10 + Math.random() * 5,
+      (Math.random() - 0.5) * 16
+    );
+    mosquito.applyImpulse(knock);
+    predatorCooldown = 0.95;
+    predHits += 1;
+    if (predEl) predEl.textContent = String(predHits);
+    document.body.classList.add("flash");
+    setTimeout(() => document.body.classList.remove("flash"), 80);
   }
 
   camOff.set(0, 0.45, 2.6);

@@ -125,6 +125,14 @@ export class RemotePeers {
     this.mesh.instanceMatrix.needsUpdate = true;
   }
 
+  /** Clear remote state after switching server room */
+  clear() {
+    for (const pid of [...this.idToSlot.keys()]) {
+      this._remove(pid);
+    }
+    this.buffers.clear();
+  }
+
   dispose() {
     this.mesh.parent?.remove(this.mesh);
     this.mesh.geometry.dispose();

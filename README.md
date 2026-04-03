@@ -34,7 +34,16 @@ npx --yes serve public -p 3000
 
 Open `http://localhost:3000` in two browser tabs. Status line shows **Online · ws://localhost:8080** when connected.
 
-**Query param:** `?ws=ws://127.0.0.1:8080` to point at another host/port (e.g. Hetzner). **nginx:** proxy `Upgrade` / `Connection` headers for WebSocket to the Node process.
+**Query params:**
+
+- `?ws=ws://127.0.0.1:8080` — WebSocket URL (defaults to same host, port 8080).
+- `?room=beach` — lobby id (alphanumeric / `_` / `-`, max 48 chars). Everyone in the same room sees each other.
+
+**nginx:** proxy `Upgrade` / `Connection` headers for WebSocket to the Node process.
+
+### Predators & hazards
+
+Five **aerial predators** (scripted paths) deal heavy knockback on contact—separate counter from giant swats. **Hazard zones** (citronella, wind, bug zapper) are in `public/js/hazards.js`.
 
 ## Architecture (deployment)
 
