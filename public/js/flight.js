@@ -79,8 +79,11 @@ export class Mosquito {
     this._accel.addScaledVector(this._fwd, input.pitch * hThrust);
     this._accel.addScaledVector(this._right, input.roll * hThrust);
 
-    /** Vertical: lift mixes with gravity — **lift = 0 → hover** (net vertical ≈ 0) */
-    const liftMix = 1 + input.lift * 0.55;
+    /**
+     * Vertical: lift vs gravity. Neutral throttle is slightly below perfect hover
+     * (~0.8% under-compensated) so you drift down slowly if you do nothing.
+     */
+    const liftMix = 0.992 + input.lift * 0.55;
     this._accel.y += -g + g * liftMix;
 
     /** Air drag — sloppy stop, not arcade snap */
