@@ -1,5 +1,8 @@
 import * as THREE from "three";
 
+/** World spawn used after respawn */
+export const SPAWN_POS = new THREE.Vector3(0, 3, 12);
+
 /**
  * Drone-ish feel: **WASD = horizontal thrust** (where you're facing), **Space/Ctrl = lift**.
  * Soft yaw, air drag, visual tilt only — no “tilt to move” requirement.
@@ -31,7 +34,7 @@ export class Mosquito {
     this.visualRoot.add(w1, w2);
 
     this.radius = 0.14;
-    this.position = new THREE.Vector3(0, 3, 12);
+    this.position = new THREE.Vector3().copy(SPAWN_POS);
     this.velocity = new THREE.Vector3(0, 0, 0);
 
     /** Yaw lives on `group`; pitch/roll only on `visualRoot` */
@@ -141,6 +144,20 @@ export class Mosquito {
 
   applyImpulse(worldDeltaV) {
     this.velocity.add(worldDeltaV);
+  }
+
+  /** Full reset at spawn (respawn after death). */
+  reset() {
+    this.position.copy(SPAWN_POS);
+    this.velocity.set(0, 0, 0);
+    this.euler.set(0, 0, 0);
+    this.yawRate = 0;
+    this.visualPitch = 0;
+    this.visualRoll = 0;
+    this.group.position.copy(this.position);
+    this._yawEuler.set(0, 0, 0);
+    this.group.quaternion.setFromEuler(this._yawEuler);
+    this.visualRoot.rotation.set(0, 0, 0);
   }
 
   getWorldPosition(target) {

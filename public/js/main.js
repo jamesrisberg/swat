@@ -45,6 +45,9 @@ const readInput = createKeyboardInput();
 const biteEl = document.getElementById("bites");
 const swatEl = document.getElementById("swats");
 const predEl = document.getElementById("preds");
+const deathsEl = document.getElementById("deaths");
+const deathTitleEl = document.getElementById("death-title");
+const deathCountdownEl = document.getElementById("death-countdown");
 const netStatusEl = document.getElementById("net-status");
 
 const params = new URLSearchParams(location.search);
@@ -95,13 +98,59 @@ let sendAcc = 0;
 let bites = 0;
 let swats = 0;
 let predHits = 0;
+let deaths = 0;
 let biteCooldown = 0;
 let hitCooldown = 0;
 let predatorCooldown = 0;
-const knock = new THREE.Vector3();
+
+let alive = true;
+/** @type {number} */
+let respawnAt = 0;
+
 const camOff = new THREE.Vector3(0, 0.45, 2.6);
 const lookAt = new THREE.Vector3();
 const forward = new THREE.Vector3();
+
+const RESPAWN_MS = 10000;
+const OVERVIEW_POS = new THREE.Vector3(0, 52, 68);
+const OVERVIEW_LOOK = new THREE.Vector3(0, 1.8, 0);
+
+/**
+ * @param {"swat" | "pred"} reason
+ */
+function die(reason) {
+  if (!alive) return;
+  alive = false;
+  deaths += 1;
+  respawnAt = performance.now() + RESPAWN_MS;
+  mosquito.velocity.set(0, 0, 0);
+  mosquito.group.visible = false;
+  if (reason === "swat") {
+    swats += 1;
+    if (swatEl) swatEl.textContent = String(swats);
+  } else {
+    predHits += 1;
+    if (predEl) predEl.textContent = String(predHits);
+  }
+  if (deathsEl) deathsEl.textContent = String(deaths);
+  if (deathTitleEl) {
+    deathTitleEl.textContent =
+      reason === "swat" ? "You got swatted" : "Caught by a predator";
+  }
+  if (deathCountdownEl) deathCountdownEl.textContent = "10";
+  document.body.classList.add("dead");
+  document.body.classList.add("flash");
+  setTimeout(() => document.body.classList.remove("flash"), 200);
+}
+
+function respawn() {
+  alive = true;
+  mosquito.reset();
+  mosquito.group.visible = true;
+  document.body.classList.remove("dead");
+  hitCooldown = 0.85;
+  predatorCooldown = 0.95;
+}
 
 let last = performance.now();
 
@@ -111,65 +160,69 @@ function tick(now) {
   last = now;
   const timeSec = now * 0.001;
 
-  mosquito.update(readInput(), dt);
-  hazards.apply(mosquito, dt);
   giant.update(dt, timeSec, mosquito.position);
-  giant.resolveBodyCollision(mosquito);
-  mosquito.group.position.copy(mosquito.position);
 
-  sendAcc += dt;
-  if (net && sendAcc >= 0.05) {
-    sendAcc = 0;
-    net.sendState(mosquito);
+  if (alive) {
+    mosquito.update(readInput(), dt);
+    hazards.apply(mosquito, dt);
+    giant.resolveBodyCollision(mosquito);
+    mosquito.group.position.copy(mosquito.position);
+
+    sendAcc += dt;
+    if (net && sendAcc >= 0.05) {
+      sendAcc = 0;
+      net.sendState(mosquito);
+    }
+
+    biteCooldown -= dt;
+    if (
+      biteCooldown <= 0 &&
+      giant.canBite(mosquito.position, mosquito.velocity, mosquito.radius)
+    ) {
+      bites += 1;
+      biteCooldown = 0.32;
+      if (biteEl) biteEl.textContent = String(bites);
+    }
+
+    hitCooldown -= dt;
+    if (hitCooldown <= 0 && giant.checkSwat(mosquito.position, mosquito.radius)) {
+      die("swat");
+    }
+
+    predatorCooldown -= dt;
+  } else {
+    if (now >= respawnAt) {
+      respawn();
+    } else if (deathCountdownEl) {
+      deathCountdownEl.textContent = String(
+        Math.max(0, Math.ceil((respawnAt - now) / 1000))
+      );
+    }
+    sendAcc += dt;
+    if (net && sendAcc >= 0.05) {
+      sendAcc = 0;
+      net.sendState(mosquito);
+    }
   }
+
+  const predHit = predators.update(timeSec, alive ? mosquito : null);
+  if (alive && predatorCooldown <= 0 && predHit) {
+    die("pred");
+  }
+
   if (peers) peers.update();
 
-  biteCooldown -= dt;
-  if (
-    biteCooldown <= 0 &&
-    giant.canBite(mosquito.position, mosquito.velocity, mosquito.radius)
-  ) {
-    bites += 1;
-    biteCooldown = 0.32;
-    if (biteEl) biteEl.textContent = String(bites);
+  if (!alive) {
+    camera.position.copy(OVERVIEW_POS);
+    camera.lookAt(OVERVIEW_LOOK);
+  } else {
+    camOff.set(0, 0.45, 2.6);
+    camOff.applyQuaternion(mosquito.group.quaternion);
+    camera.position.copy(mosquito.position).add(camOff);
+    forward.set(0, 0, -1).applyQuaternion(mosquito.group.quaternion);
+    lookAt.copy(mosquito.position).addScaledVector(forward, 1.2);
+    camera.lookAt(lookAt);
   }
-
-  hitCooldown -= dt;
-  if (hitCooldown <= 0 && giant.checkSwat(mosquito.position, mosquito.radius)) {
-    knock.set(
-      (Math.random() - 0.5) * 10,
-      6 + Math.random() * 4,
-      (Math.random() - 0.5) * 10
-    );
-    mosquito.applyImpulse(knock);
-    hitCooldown = 0.75;
-    swats += 1;
-    if (swatEl) swatEl.textContent = String(swats);
-    document.body.classList.add("flash");
-    setTimeout(() => document.body.classList.remove("flash"), 120);
-  }
-
-  predatorCooldown -= dt;
-  if (predatorCooldown <= 0 && predators.update(timeSec, mosquito)) {
-    knock.set(
-      (Math.random() - 0.5) * 16,
-      10 + Math.random() * 5,
-      (Math.random() - 0.5) * 16
-    );
-    mosquito.applyImpulse(knock);
-    predatorCooldown = 0.95;
-    predHits += 1;
-    if (predEl) predEl.textContent = String(predHits);
-    document.body.classList.add("flash");
-    setTimeout(() => document.body.classList.remove("flash"), 80);
-  }
-
-  camOff.set(0, 0.45, 2.6);
-  camOff.applyQuaternion(mosquito.group.quaternion);
-  camera.position.copy(mosquito.position).add(camOff);
-  forward.set(0, 0, -1).applyQuaternion(mosquito.group.quaternion);
-  lookAt.copy(mosquito.position).addScaledVector(forward, 1.2);
-  camera.lookAt(lookAt);
 
   renderer.render(scene, camera);
 }

@@ -56,7 +56,7 @@ export class Predators {
 
   /**
    * @param {number} timeSec
-   * @param {{ position: THREE.Vector3; radius: number }} mosquito
+   * @param {{ position: THREE.Vector3; radius: number } | null} mosquito — null skips hit test (e.g. while dead)
    * @returns {boolean} hit this frame
    */
   update(timeSec, mosquito) {
@@ -66,9 +66,11 @@ export class Predators {
       e.path(t, this._pos);
       e.group.position.copy(this._pos);
 
-      const r = e.radius + mosquito.radius;
-      if (this._pos.distanceToSquared(mosquito.position) < r * r) {
-        hit = true;
+      if (mosquito) {
+        const r = e.radius + mosquito.radius;
+        if (this._pos.distanceToSquared(mosquito.position) < r * r) {
+          hit = true;
+        }
       }
     }
     return hit;
