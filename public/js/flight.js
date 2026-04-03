@@ -165,8 +165,9 @@ export function createKeyboardInput() {
     if (keys.has("ControlLeft") || keys.has("ControlRight")) lift -= 1;
 
     let yaw = 0;
-    if (keys.has("ArrowLeft")) yaw -= 1;
-    if (keys.has("ArrowRight")) yaw += 1;
+    /** Left arrow = yaw left (matches screen expectation) */
+    if (keys.has("ArrowLeft")) yaw += 1;
+    if (keys.has("ArrowRight")) yaw -= 1;
 
     return { pitch, roll, lift, yaw };
   };
