@@ -1,8 +1,8 @@
 import * as THREE from "three";
 
 /**
- * Quadcopter-ish mosquito: thrust along body up, tilt for horizontal motion,
- * soft angular momentum (overshoot, no instant stops), hover throttle.
+ * Drone-ish feel: **WASD = horizontal thrust** (where you're facing), **Space/Ctrl = lift**.
+ * Soft yaw, air drag, visual tilt only — no “tilt to move” requirement.
  */
 export class Mosquito {
   constructor() {
@@ -29,90 +29,67 @@ export class Mosquito {
     this.position = new THREE.Vector3(0, 3, 12);
     this.velocity = new THREE.Vector3(0, 0, 0);
 
-    /** YXZ: yaw, pitch, roll (tilt) */
+    /** Yaw + visual bank only */
     this.euler = new THREE.Euler(0, 0, 0, "YXZ");
-    /** Angular rates — carry momentum (overshoot when releasing input) */
-    this.pitchRate = 0;
-    this.rollRate = 0;
     this.yawRate = 0;
+    this.visualPitch = 0;
+    this.visualRoll = 0;
 
     this._quat = new THREE.Quaternion();
+    this._flatQuat = new THREE.Quaternion();
+    this._yawEuler = new THREE.Euler(0, 0, 0, "YXZ");
+    this._fwd = new THREE.Vector3();
+    this._right = new THREE.Vector3();
     this._accel = new THREE.Vector3();
-    this._thrust = new THREE.Vector3();
-    this._drag = new THREE.Vector3();
-    this._gravity = new THREE.Vector3(0, -11.5, 0);
 
     this.group.position.copy(this.position);
   }
 
   /**
    * @param {object} input
-   * @param {number} input.pitch -1..1 tilt forward/back (W/S)
-   * @param {number} input.roll -1..1 strafe tilt (A/D)
-   * @param {number} input.lift -1..1 throttle (Space / Ctrl)
-   * @param {number} input.yaw -1..1 yaw (arrows)
+   * @param {number} input.pitch W/S → forward/back thrust
+   * @param {number} input.roll A/D → strafe thrust
+   * @param {number} input.lift Space/Ctrl → lift (−1..1)
+   * @param {number} input.yaw arrows → yaw
    * @param {number} dt
    */
   update(input, dt) {
-    const g = 11.5;
+    const g = 11.2;
 
-    /** Tilt limits (~28°) — quad can't fold flat */
-    const maxTilt = 0.48;
-
-    /** Torque: sluggish response → overshoot when input stops */
-    const pitchTorque = 5.0;
-    const rollTorque = 5.0;
-    const pitchDamp = 1.35;
-    const rollDamp = 1.35;
-    const yawTorque = 2.1;
-    const yawDamp = 2.8;
-
-    this.pitchRate += input.pitch * pitchTorque * dt;
-    this.rollRate += input.roll * rollTorque * dt;
+    /** Soft yaw */
+    const yawTorque = 2.4;
+    const yawDamp = 2.6;
     this.yawRate += input.yaw * yawTorque * dt;
-
-    this.pitchRate *= Math.exp(-pitchDamp * dt);
-    this.rollRate *= Math.exp(-rollDamp * dt);
     this.yawRate *= Math.exp(-yawDamp * dt);
-
-    this.euler.x += this.pitchRate * dt;
-    this.euler.z += this.rollRate * dt;
     this.euler.y += this.yawRate * dt;
 
-    this.euler.x = THREE.MathUtils.clamp(this.euler.x, -maxTilt, maxTilt);
-    this.euler.z = THREE.MathUtils.clamp(this.euler.z, -maxTilt, maxTilt);
+    /** Flat orientation (yaw only) for thrust direction */
+    this._yawEuler.set(0, this.euler.y, 0);
+    this._flatQuat.setFromEuler(this._yawEuler);
+    this._fwd.set(0, 0, -1).applyQuaternion(this._flatQuat);
+    this._right.set(1, 0, 0).applyQuaternion(this._flatQuat);
 
-    /** Gentle auto-level when not commanding tilt (easier hover) */
-    const auto = 0.85;
-    if (Math.abs(input.pitch) < 0.02) {
-      this.pitchRate += (-this.euler.x - this.pitchRate * 0.12) * auto * dt;
-    }
-    if (Math.abs(input.roll) < 0.02) {
-      this.rollRate += (-this.euler.z - this.rollRate * 0.12) * auto * dt;
-    }
+    /** Horizontal thrust — this is what “move” feels like */
+    const hThrust = 19;
+    this._accel.set(0, 0, 0);
+    this._accel.addScaledVector(this._fwd, input.pitch * hThrust);
+    this._accel.addScaledVector(this._right, input.roll * hThrust);
 
-    this._quat.setFromEuler(this.euler);
+    /** Vertical: lift mixes with gravity — **lift = 0 → hover** (net vertical ≈ 0) */
+    const liftMix = 1 + input.lift * 0.55;
+    this._accel.y += -g + g * liftMix;
 
-    /** Throttle: ~1 = hover when level; Space/Ctrl shifts band */
-    const liftMag = g * (1.0 + input.lift * 0.42);
-    this._thrust.set(0, 1, 0).applyQuaternion(this._quat).multiplyScalar(liftMag);
-
-    this._accel.copy(this._thrust).add(this._gravity);
-
-    /** Air drag — can't stop on a dime; horizontal a bit stronger */
-    const dragH = 0.85;
-    const dragV = 0.55;
-    this._drag.set(
-      -this.velocity.x * dragH,
-      -this.velocity.y * dragV,
-      -this.velocity.z * dragH
-    );
-    this._accel.add(this._drag);
+    /** Air drag — sloppy stop, not arcade snap */
+    const dragH = 1.05;
+    const dragV = 0.65;
+    this._accel.x += -this.velocity.x * dragH;
+    this._accel.z += -this.velocity.z * dragH;
+    this._accel.y += -this.velocity.y * dragV;
 
     this.velocity.addScaledVector(this._accel, dt);
 
-    const maxH = 14;
-    const maxV = 18;
+    const maxH = 16;
+    const maxV = 20;
     const vh = Math.hypot(this.velocity.x, this.velocity.z);
     if (vh > maxH) {
       const s = maxH / vh;
@@ -125,19 +102,33 @@ export class Mosquito {
 
     const groundY = this.radius;
     if (this.position.y < groundY + 2.2) {
-      /** Ground cushion / ground effect */
-      this.velocity.y += (groundY + 1.6 - this.position.y) * 1.8 * dt;
+      this.velocity.y += (groundY + 1.6 - this.position.y) * 1.7 * dt;
     }
     if (this.position.y < groundY) {
       this.position.y = groundY;
       this.velocity.y = Math.max(0, this.velocity.y * 0.35);
     }
 
+    /** Visual tilt lags input — looks quad-like without steering physics */
+    const vt = 5.5;
+    this.visualPitch = THREE.MathUtils.lerp(
+      this.visualPitch,
+      -input.pitch * 0.28,
+      1 - Math.exp(-vt * dt)
+    );
+    this.visualRoll = THREE.MathUtils.lerp(
+      this.visualRoll,
+      input.roll * 0.28,
+      1 - Math.exp(-vt * dt)
+    );
+    this.euler.x = this.visualPitch;
+    this.euler.z = this.visualRoll;
+
+    this._quat.setFromEuler(this.euler);
     this.group.position.copy(this.position);
     this.group.quaternion.copy(this._quat);
   }
 
-  /** Impulse in world space (e.g. swat knockback) */
   applyImpulse(worldDeltaV) {
     this.velocity.add(worldDeltaV);
   }
@@ -147,7 +138,7 @@ export class Mosquito {
   }
 }
 
-/** Poll keyboard — quad-style: W/S tilt, A/D roll, Space/Ctrl throttle, arrows yaw */
+/** W/S forward · A/D strafe · Space/Ctrl lift · arrows yaw */
 export function createKeyboardInput() {
   const keys = new Set();
   window.addEventListener("keydown", (e) => {
