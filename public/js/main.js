@@ -51,8 +51,16 @@ const deathCountdownEl = document.getElementById("death-countdown");
 const netStatusEl = document.getElementById("net-status");
 
 const params = new URLSearchParams(location.search);
-const wsUrl =
-  params.get("ws") ?? `ws://${location.hostname}:8080`;
+
+/** Production HTTPS: nginx proxies /ws → Node. Local/dev: ws://host:8080 */
+function defaultWsUrl() {
+  if (location.protocol === "https:") {
+    return `wss://${location.host}/ws`;
+  }
+  return `ws://${location.hostname}:8080`;
+}
+
+const wsUrl = params.get("ws") ?? defaultWsUrl();
 const roomParam = params.get("room") ?? "default";
 
 /** @type {NetClient | null} */

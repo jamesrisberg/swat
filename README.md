@@ -41,6 +41,35 @@ Open `http://localhost:3000` in two browser tabs. Status line shows **Online · 
 
 **nginx:** proxy `Upgrade` / `Connection` headers for WebSocket to the Node process.
 
+## Host online (friends can join)
+
+You need **(1)** static files from `public/` and **(2)** the Node relay in `server/` (WebSocket). Everyone uses the **same** `?room=` to land in one lobby.
+
+### Quick (HTTP, janky but fast)
+
+1. On a VPS (e.g. Hetzner), clone the repo to e.g. `/opt/swat`, run `cd server && npm install`.
+2. Run the relay: `cd /opt/swat/server && PORT=8080 node index.mjs` (or use [`deploy/swat-ws.service`](deploy/swat-ws.service) with systemd).
+3. Serve `public/` on port **80** (nginx `root`, or `npx serve public -p 80` behind `sudo`).
+4. Open firewall: **80** and **8080** (browser default is `ws://YOUR_DOMAIN_OR_IP:8080`).
+5. Share: `http://YOUR_IP/` or `http://your.domain/` and the same `?room=lobby` link for everyone.
+
+Override WebSocket URL if needed: `?ws=ws://host:8080`
+
+### Better (HTTPS + WSS, one port)
+
+Browsers require **wss://** when the page is **https://**. The client defaults to **`wss://<same host>/ws`** when `location.protocol` is `https` (see `public/js/main.js`).
+
+1. Install nginx; copy [`deploy/nginx-swat.conf.example`](deploy/nginx-swat.conf.example), set `server_name` and `root` to your `public/` path.
+2. Point `proxy_pass` at `127.0.0.1:8080` where Node runs (systemd unit above). **Do not** expose 8080 publicly—only nginx on 80/443.
+3. `sudo certbot --nginx -d game.example.com` for TLS.
+4. `sudo ufw allow 80,443/tcp && sudo ufw enable`
+
+Share: `https://game.example.com/?room=lobby` — WebSocket goes to **`wss://game.example.com/ws`** automatically.
+
+### Manual override
+
+`?ws=wss://other-host/ws` if you split static and relay across hosts.
+
 ### Predators & hazards
 
 Five **aerial predators** (scripted paths) deal heavy knockback on contact—separate counter from giant swats. **Hazard zones** (citronella, wind, bug zapper) are in `public/js/hazards.js`.
