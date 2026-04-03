@@ -111,15 +111,15 @@ export class Mosquito {
 
     /** Visual tilt lags input — looks quad-like without steering physics */
     const vt = 5.5;
-    /** Match thrust direction: W forward noses down, S back noses up */
     this.visualPitch = THREE.MathUtils.lerp(
       this.visualPitch,
-      input.pitch * 0.28,
+      -input.pitch * 0.28,
       1 - Math.exp(-vt * dt)
     );
+    /** Bank opposite sign from strafe so A/D tilt matches slide direction */
     this.visualRoll = THREE.MathUtils.lerp(
       this.visualRoll,
-      input.roll * 0.28,
+      -input.roll * 0.28,
       1 - Math.exp(-vt * dt)
     );
     this.euler.x = this.visualPitch;
