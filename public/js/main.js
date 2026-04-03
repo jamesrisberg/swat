@@ -114,6 +114,8 @@ function tick(now) {
   mosquito.update(readInput(), dt);
   hazards.apply(mosquito, dt);
   giant.update(dt, timeSec, mosquito.position);
+  giant.resolveBodyCollision(mosquito);
+  mosquito.group.position.copy(mosquito.position);
 
   sendAcc += dt;
   if (net && sendAcc >= 0.05) {
@@ -123,7 +125,10 @@ function tick(now) {
   if (peers) peers.update();
 
   biteCooldown -= dt;
-  if (biteCooldown <= 0 && giant.canBite(mosquito.position)) {
+  if (
+    biteCooldown <= 0 &&
+    giant.canBite(mosquito.position, mosquito.velocity, mosquito.radius)
+  ) {
     bites += 1;
     biteCooldown = 0.32;
     if (biteEl) biteEl.textContent = String(bites);

@@ -52,8 +52,17 @@ export class Giant {
     this.handL = new THREE.Vector3();
     this.handR = new THREE.Vector3();
     this.handRadius = 0.55;
-    this.biteRadius = 1.1;
     this.phase = 0;
+
+    /** World-space torso AABB (giant at origin) — matches BoxGeometry(2.8,3.2,1.6) at y=2.4 */
+    this.torsoMin = new THREE.Vector3(-1.4, 0.8, -0.8);
+    this.torsoMax = new THREE.Vector3(1.4, 4.0, 0.8);
+    this.headCenter = new THREE.Vector3(0, 4.4, 0);
+    this.headRadius = 0.55;
+
+    this._closest = new THREE.Vector3();
+    this._delta = new THREE.Vector3();
+    this._normal = new THREE.Vector3();
   }
 
   _makeArm(side, skinMat, shirtMat) {
@@ -115,13 +124,100 @@ export class Giant {
     target.applyMatrix4(forearmGroup.matrixWorld);
   }
 
-  /** True if mosquito center is in bite range of torso */
-  canBite(mosquitoPos) {
-    const p = this.torsoWorldPos;
-    const dx = mosquitoPos.x - p.x;
-    const dy = mosquitoPos.y - p.y;
-    const dz = mosquitoPos.z - p.z;
-    return dx * dx + dy * dy * 0.45 + dz * dz < this.biteRadius * this.biteRadius;
+  /**
+   * Bite only when “on the skin”: near torso/head surface, not inside, and slow enough to count as landed.
+   * @param {THREE.Vector3} pos
+   * @param {THREE.Vector3} vel
+   * @param {number} radius
+   */
+  canBite(pos, vel, radius) {
+    /** Still counts as “landed” while scooting on his shirt */
+    const maxLandSpeed = 10;
+    if (vel.lengthSq() > maxLandSpeed * maxLandSpeed) return false;
+
+    const skin = this._surfaceContactDistance(pos, radius);
+    return skin !== null && skin >= -0.03 && skin <= 0.12;
+  }
+
+  /**
+   * Signed-ish contact band: 0 = perfect touch, small positive = grazing. null = not on skin.
+   */
+  _surfaceContactDistance(pos, r) {
+    const c = this._closestPointOnAABB(pos, this.torsoMin, this.torsoMax);
+    let d = pos.distanceTo(c);
+    let best = null;
+    if (d >= r - 0.06 && d <= r + 0.12) {
+      best = d - r;
+    }
+    const dh = pos.distanceTo(this.headCenter);
+    const headSurf = this.headRadius + r;
+    if (dh >= headSurf - 0.06 && dh <= headSurf + 0.12) {
+      const gap = dh - headSurf;
+      if (best === null || gap < best) best = gap;
+    }
+    return best;
+  }
+
+  _closestPointOnAABB(p, min, max) {
+    return this._closest.set(
+      THREE.MathUtils.clamp(p.x, min.x, max.x),
+      THREE.MathUtils.clamp(p.y, min.y, max.y),
+      THREE.MathUtils.clamp(p.z, min.z, max.z)
+    );
+  }
+
+  /**
+   * Push mosquito out of solid torso + head; damp velocity into surface.
+   * @param {{ position: THREE.Vector3; velocity: THREE.Vector3; radius: number }} m
+   */
+  resolveBodyCollision(m) {
+    const p = m.position;
+    const r = m.radius;
+    const v = m.velocity;
+
+    this._pushSphereOutOfAABB(p, r, v, this.torsoMin, this.torsoMax);
+    this._pushSphereOutOfSphere(p, r, v, this.headCenter, this.headRadius);
+  }
+
+  _pushSphereOutOfAABB(p, r, v, min, max) {
+    const c = this._closestPointOnAABB(p, min, max);
+    this._delta.subVectors(p, c);
+    const dist = this._delta.length();
+    if (dist < r - 1e-5) {
+      if (dist > 1e-5) {
+        this._normal.copy(this._delta).multiplyScalar(1 / dist);
+        p.addScaledVector(this._normal, r - dist);
+        const vn = v.dot(this._normal);
+        if (vn < 0) v.addScaledVector(this._normal, -vn * 1.15);
+      } else {
+        /** Center inside box — push toward nearest face */
+        const ax = Math.min(p.x - min.x, max.x - p.x);
+        const ay = Math.min(p.y - min.y, max.y - p.y);
+        const az = Math.min(p.z - min.z, max.z - p.z);
+        if (ax <= ay && ax <= az) {
+          this._normal.set(p.x < (min.x + max.x) * 0.5 ? -1 : 1, 0, 0);
+        } else if (ay <= az) {
+          this._normal.set(0, p.y < (min.y + max.y) * 0.5 ? -1 : 1, 0);
+        } else {
+          this._normal.set(0, 0, p.z < (min.z + max.z) * 0.5 ? -1 : 1);
+        }
+        p.addScaledVector(this._normal, r + 0.02);
+        const vn = v.dot(this._normal);
+        if (vn < 0) v.addScaledVector(this._normal, -vn * 1.15);
+      }
+    }
+  }
+
+  _pushSphereOutOfSphere(p, r, v, center, R) {
+    this._delta.subVectors(p, center);
+    const dist = this._delta.length();
+    const minDist = R + r;
+    if (dist < minDist - 1e-5 && dist > 1e-5) {
+      this._normal.copy(this._delta).multiplyScalar(1 / dist);
+      p.addScaledVector(this._normal, minDist - dist);
+      const vn = v.dot(this._normal);
+      if (vn < 0) v.addScaledVector(this._normal, -vn * 1.15);
+    }
   }
 
   /**
