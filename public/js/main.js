@@ -2,6 +2,8 @@ import * as THREE from "three";
 import { Mosquito, createKeyboardInput } from "./flight.js";
 import { Giant } from "./giant.js";
 import { HazardZones } from "./hazards.js";
+import { NetClient } from "./net.js";
+import { RemotePeers } from "./peers.js";
 
 const scene = new THREE.Scene();
 scene.background = new THREE.Color(0x0a0a0c);
@@ -40,6 +42,41 @@ const readInput = createKeyboardInput();
 
 const biteEl = document.getElementById("bites");
 const swatEl = document.getElementById("swats");
+const netStatusEl = document.getElementById("net-status");
+
+const params = new URLSearchParams(location.search);
+const wsUrl =
+  params.get("ws") ?? `ws://${location.hostname}:8080`;
+
+/** @type {NetClient | null} */
+let net = null;
+/** @type {RemotePeers | null} */
+let peers = null;
+let sendAcc = 0;
+
+(async () => {
+  const client = new NetClient();
+  try {
+    await client.connect(wsUrl);
+    net = client;
+    peers = new RemotePeers(scene, net.id);
+    net.onMessage = (msg) => {
+      if (msg.type === "snapshot" && peers && msg.players) {
+        peers.ingestSnapshot(msg);
+      }
+      if (msg.type === "disconnected" && peers) {
+        peers.dispose();
+        peers = null;
+        net = null;
+        if (netStatusEl) netStatusEl.textContent = "Solo (offline)";
+      }
+    };
+    if (netStatusEl) netStatusEl.textContent = `Online · ${wsUrl}`;
+  } catch (e) {
+    console.warn("Multiplayer offline:", e);
+    if (netStatusEl) netStatusEl.textContent = "Solo (offline)";
+  }
+})();
 
 let bites = 0;
 let swats = 0;
@@ -60,6 +97,13 @@ function tick(now) {
   mosquito.update(readInput(), dt);
   hazards.apply(mosquito, dt);
   giant.update(dt, now * 0.001, mosquito.position);
+
+  sendAcc += dt;
+  if (net && sendAcc >= 0.05) {
+    sendAcc = 0;
+    net.sendState(mosquito);
+  }
+  if (peers) peers.update();
 
   biteCooldown -= dt;
   if (biteCooldown <= 0 && giant.canBite(mosquito.position)) {

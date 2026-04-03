@@ -16,6 +16,26 @@ Then open the URL it prints (e.g. `http://localhost:3000`).
 
 Clunky momentum flight, a giant NPC with slow arm swings (hand collision = knockback), bite score near the torso, and placeholder hazards (citronella repulsion, wind, bug-zapper pull). Code lives under `public/js/` (`main.js`, `flight.js`, `giant.js`, `hazards.js`).
 
+## Phase B — local multiplayer (relay)
+
+A tiny **Node** server in `server/` broadcasts JSON snapshots at ~20 Hz. Clients send their transform; other players render as **instanced** mosquitoes with **~110 ms interpolation** lag. This is a trust relay (not authoritative physics yet).
+
+**Run two terminals:**
+
+```bash
+# Terminal 1 — game server
+cd server && npm install && npm start
+```
+
+```bash
+# Terminal 2 — static site (same host as the browser uses for WS)
+npx --yes serve public -p 3000
+```
+
+Open `http://localhost:3000` in two browser tabs. Status line shows **Online · ws://localhost:8080** when connected.
+
+**Query param:** `?ws=ws://127.0.0.1:8080` to point at another host/port (e.g. Hetzner). **nginx:** proxy `Upgrade` / `Connection` headers for WebSocket to the Node process.
+
 ## Architecture (deployment)
 
 | Layer | Role |
