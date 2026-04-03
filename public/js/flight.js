@@ -7,12 +7,17 @@ import * as THREE from "three";
 export class Mosquito {
   constructor() {
     this.group = new THREE.Group();
+    /** Body + wings pitch/roll here; parent `group` is yaw-only (camera follows parent). */
+    this.visualRoot = new THREE.Group();
+    this.visualRoot.rotation.order = "YXZ";
+    this.group.add(this.visualRoot);
+
     const body = new THREE.Mesh(
       new THREE.ConeGeometry(0.06, 0.22, 6),
       new THREE.MeshStandardMaterial({ color: 0x2a1810, roughness: 0.7 })
     );
     body.rotation.x = Math.PI / 2;
-    this.group.add(body);
+    this.visualRoot.add(body);
     const wingMat = new THREE.MeshStandardMaterial({
       color: 0x6a5a4a,
       transparent: true,
@@ -23,19 +28,18 @@ export class Mosquito {
     w1.position.set(0, 0.02, 0);
     const w2 = w1.clone();
     w2.rotation.y = Math.PI;
-    this.group.add(w1, w2);
+    this.visualRoot.add(w1, w2);
 
     this.radius = 0.14;
     this.position = new THREE.Vector3(0, 3, 12);
     this.velocity = new THREE.Vector3(0, 0, 0);
 
-    /** Yaw + visual bank only */
+    /** Yaw lives on `group`; pitch/roll only on `visualRoot` */
     this.euler = new THREE.Euler(0, 0, 0, "YXZ");
     this.yawRate = 0;
     this.visualPitch = 0;
     this.visualRoll = 0;
 
-    this._quat = new THREE.Quaternion();
     this._flatQuat = new THREE.Quaternion();
     this._yawEuler = new THREE.Euler(0, 0, 0, "YXZ");
     this._fwd = new THREE.Vector3();
@@ -122,12 +126,14 @@ export class Mosquito {
       -input.roll * 0.28,
       1 - Math.exp(-vt * dt)
     );
-    this.euler.x = this.visualPitch;
-    this.euler.z = this.visualRoll;
 
-    this._quat.setFromEuler(this.euler);
     this.group.position.copy(this.position);
-    this.group.quaternion.copy(this._quat);
+    this._yawEuler.set(0, this.euler.y, 0);
+    this.group.quaternion.setFromEuler(this._yawEuler);
+
+    this.visualRoot.rotation.x = this.visualPitch;
+    this.visualRoot.rotation.y = 0;
+    this.visualRoot.rotation.z = this.visualRoll;
   }
 
   applyImpulse(worldDeltaV) {
